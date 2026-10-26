@@ -1,0 +1,404 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <title>Live AsciiMath Preview & Capture</title>
+
+  <!-- Configure MathJax for AsciiMath input and CHTML output -->
+  <script>
+    MathJax = {
+      loader: { load: ['input/asciimath', 'output/chtml'] },
+      asciimath: {
+        delimiters: [['`','`']] // Renders anything wrapped in backticks
+      }
+    };
+  </script>
+
+  <!-- Load MathJax library from CDN -->
+  <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+  <!-- Load html2canvas for capturing DOM element as image -->
+  <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
+
+  <style>
+    :root {
+      /* Define aquí el valor de "n" (porcentaje del ancho para la columna izquierda) */
+      --n: 25%; 
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body { 
+      font-family: system-ui, -apple-system, sans-serif; 
+      padding: 20px; 
+      width: 100%;
+      max-width: 1400px; 
+      margin: auto; 
+      background-color: #f8fafc;
+      color: #333;
+    }
+
+    h2 {
+      margin-top: 0;
+      color: #2c3e50;
+      margin-bottom: 15px;
+    }
+
+    /* Barra de controles superior */
+    .controls {
+      display: flex;
+      align-items: center;
+      gap: 15px;
+      margin-bottom: 15px;
+      flex-wrap: wrap;
+      background-color: #ffffff;
+      padding: 12px 15px;
+      border-radius: 8px;
+      border: 1px solid #e2e8f0;
+      width: 100%;
+    }
+
+    .control-group {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-weight: 600;
+      font-size: 14px;
+    }
+
+    input[type="color"] {
+      -webkit-appearance: none;
+      border: 1px solid #ccc;
+      width: 32px;
+      height: 32px;
+      border-radius: 6px;
+      cursor: pointer;
+      padding: 2px;
+      background: #fff;
+    }
+
+    input[type="color"]:disabled {
+      opacity: 0.4;
+      cursor: not-allowed;
+    }
+
+    input[type="number"] {
+      border: 1px solid #ccc;
+      width: 65px;
+      height: 32px;
+      border-radius: 6px;
+      padding: 4px 8px;
+      font-size: 14px;
+      background: #fff;
+      outline: none;
+    }
+
+    input[type="number"]:focus {
+      border-color: #2563eb;
+      box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.15);
+    }
+
+    .checkbox-label {
+      cursor: pointer;
+      user-select: none;
+    }
+
+    button {
+      color: white;
+      border: none;
+      padding: 9px 16px;
+      font-size: 14px;
+      font-weight: 600;
+      border-radius: 6px;
+      cursor: pointer;
+      transition: background-color 0.2s ease, transform 0.1s ease;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .btn-primary {
+      background-color: #2563eb;
+      margin-left: auto;
+    }
+
+    .btn-primary:hover { background-color: #1d4ed8; }
+
+    button:active { transform: scale(0.98); }
+
+    /* LAYOUT CON DISTRIBUCIÓN PORCENTUAL EXACTA (n% | 2% | (98-n)%) */
+    .main-container {
+      display: grid;
+      /* Columna 1: n% | Columna 2: 2% (espacio) | Columna 3: (98 - n)% */
+      grid-template-columns: var(--n) 2% calc(98% - var(--n));
+      width: 100%;
+      min-height: 200px;
+    }
+
+    /* Columna Izquierda: Textarea */
+    textarea { 
+      grid-column: 1; /* Se ubica en la primera franja (n%) */
+      width: 100%; 
+      height: 100%; 
+      min-height: 200px;
+      font-family: monospace; 
+      font-size: 13px; /* Tamaño inicial por defecto */
+      padding: 12px; 
+      border: 1px solid #ccc;
+      border-radius: 8px;
+      resize: vertical;
+      outline: none;
+    }
+
+    textarea:focus {
+      border-color: #2563eb;
+      box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.15);
+    }
+
+    /* Columna Derecha: OUTPUT DIV */
+    .right-column {
+      grid-column: 3;
+      display: flex;
+      flex-direction: column;
+      gap: 15px;
+      width: 100%;
+    }
+
+    /* OUTPUT DIV inferior de tamaño ajustable y ajuste automático de línea */
+    #output { 
+      padding: 20px; 
+      border: 1px solid #e2e8f0; 
+      min-height: 200px; 
+      flex-grow: 1;
+      font-size: 20px; /* Tamaño inicial por defecto */
+      border-radius: 8px;
+      box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
+      display: block;
+      text-align: left;
+      transition: color 0.2s ease, background-color 0.2s ease;
+      
+      /* Control de saltos de línea y desbordamiento horizontal */
+      white-space: pre-wrap;
+      word-break: break-word;
+      overflow-wrap: break-word;
+      overflow-x: hidden;
+      overflow-y: auto;
+      resize: vertical;
+    }
+
+    /* Permitir que los contenedores de MathJax también se adapten al ancho */
+    #output mjx-container {
+      max-width: 100%;
+      white-space: normal !important;
+    }
+
+    #output.transparent-bg {
+      background-image: linear-gradient(45deg, #e0e0e0 25%, transparent 25%), 
+                        linear-gradient(-45deg, #e0e0e0 25%, transparent 25%), 
+                        linear-gradient(45deg, transparent 75%, #e0e0e0 75%), 
+                        linear-gradient(-45deg, transparent 75%, #e0e0e0 75%);
+      background-size: 20px 20px;
+      background-position: 0 0, 0 10px, 10px -10px, -10px 0px;
+      background-color: #ffffff;
+    }
+
+    .toast {
+      position: fixed;
+      bottom: 20px;
+      right: 20px;
+      background-color: #10b981;
+      color: white;
+      padding: 12px 20px;
+      border-radius: 6px;
+      font-weight: 600;
+      box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
+      opacity: 0;
+      transform: translateY(10px);
+      transition: all 0.3s ease;
+      pointer-events: none;
+    }
+
+    .toast.show {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  </style>
+</head>
+<body>
+
+  <h2>Live AsciiMath Preview & Capture</h2>
+  
+  <!-- Barra de botones y configuración -->
+  <div class="controls">
+    <div class="control-group">
+      <label for="editorFontSize">Editor Size:</label>
+      <input type="number" id="editorFontSize" value="13" min="10" max="36"> px
+    </div>
+
+    <div class="control-group">
+      <label for="outputFontSize">Output Size:</label>
+      <input type="number" id="outputFontSize" value="20" min="10" max="60"> px
+    </div>
+
+    <div class="control-group">
+      <label for="textColorPicker">Text Color:</label>
+      <input type="color" id="textColorPicker" value="#000000">
+    </div>
+
+    <div class="control-group">
+      <label for="bgColorPicker">BG Color:</label>
+      <input type="color" id="bgColorPicker" value="#ffffff">
+    </div>
+
+    <div class="control-group">
+      <label class="checkbox-label">
+        <input type="checkbox" id="transparentToggle">
+        Transparent BG
+      </label>
+    </div>
+
+    <button class="btn-primary" onclick="copyDivToClipboard()">
+      📋 Copy Formula Image
+    </button>
+  </div>
+
+  <!-- Contenedor principal -->
+  <div class="main-container">
+    
+    <!-- Columna 1 (n%) -->
+    <textarea id="editor" placeholder='Escribe fórmulas directamente y el texto normal entre comillas "como esto"...'>int_0^pi sin(x) dx " es igual a " 2</textarea>
+
+    <!-- Columna 3 (98-n)% -->
+    <div class="right-column">
+      <div id="output"></div>
+    </div>
+
+  </div>
+
+  <div id="toast" class="toast">¡Imagen copiada al portapapeles!</div>
+
+  <script>
+    const editor = document.getElementById('editor');
+    const output = document.getElementById('output');
+    const editorFontSize = document.getElementById('editorFontSize');
+    const outputFontSize = document.getElementById('outputFontSize');
+    const textColorPicker = document.getElementById('textColorPicker');
+    const bgColorPicker = document.getElementById('bgColorPicker');
+    const transparentToggle = document.getElementById('transparentToggle');
+    const toast = document.getElementById('toast');
+
+    // Separa el texto normal (entre comillas) del AsciiMath (fuera de comillas) procesando línea por línea
+    function parseInputToAsciiMath(rawText) {
+      if (!rawText.trim()) return '';
+
+      const lines = rawText.split('\n');
+      const parsedLines = lines.map(line => {
+        if (!line.trim()) return '';
+
+        const parts = line.split(/"([^"]*)"/g);
+        let lineOutput = '';
+
+        for (let i = 0; i < parts.length; i++) {
+          if (i % 2 === 1) {
+            // Es texto normal (estaba entre comillas) -> Se mantiene como texto plano
+            lineOutput += parts[i];
+          } else {
+            // Es AsciiMath (fuera de comillas) -> Se envuelve individualmente en acentos graves
+            if (parts[i]) {
+              lineOutput += '`' + parts[i] + '`';
+            }
+          }
+        }
+        return lineOutput;
+      });
+
+      return parsedLines.join('\n');
+    }
+
+    function updatePreview() {
+      output.style.color = textColorPicker.value;
+
+      if (transparentToggle.checked) {
+        bgColorPicker.disabled = true;
+        output.classList.add('transparent-bg');
+        output.style.backgroundColor = 'transparent';
+      } else {
+        bgColorPicker.disabled = false;
+        output.classList.remove('transparent-bg');
+        output.style.backgroundColor = bgColorPicker.value;
+      }
+
+      const parsedAsciiMath = parseInputToAsciiMath(editor.value);
+      output.innerHTML = parsedAsciiMath;
+
+      // Renderizado con MathJax
+      if (window.MathJax && MathJax.typesetPromise) {
+        MathJax.typesetPromise([output]).catch((err) => console.error(err));
+      }
+    }
+
+    function showToast(message) {
+      toast.innerText = message;
+      toast.classList.add('show');
+      setTimeout(() => {
+        toast.classList.remove('show');
+      }, 2500);
+    }
+
+    async function copyDivToClipboard() {
+      try {
+        const isTransparent = transparentToggle.checked;
+
+        // Captura el DIV output asegurando un renderizado de alta calidad
+        const canvas = await html2canvas(output, {
+          backgroundColor: isTransparent ? null : bgColorPicker.value,
+          scale: 2,
+          useCORS: true,
+          logging: false
+        });
+
+        canvas.toBlob(async (blob) => {
+          if (!blob) {
+            alert('No se pudo generar la imagen.');
+            return;
+          }
+          try {
+            const item = new ClipboardItem({ 'image/png': blob });
+            await navigator.clipboard.write([item]);
+            showToast('✓ ¡Imagen copiada al portapapeles!');
+          } catch (err) {
+            console.error(err);
+            alert('No se pudo copiar automáticamente al portapapeles.');
+          }
+        }, 'image/png');
+      } catch (err) {
+        console.error('Error al capturar la imagen:', err);
+      }
+    }
+
+    // Event listeners para los tamaños de fuente
+    editorFontSize.addEventListener('input', () => {
+      editor.style.fontSize = editorFontSize.value + 'px';
+    });
+
+    outputFontSize.addEventListener('input', () => {
+      output.style.fontSize = outputFontSize.value + 'px';
+    });
+
+    // Event listeners generales
+    editor.addEventListener('input', updatePreview);
+    textColorPicker.addEventListener('input', updatePreview);
+    bgColorPicker.addEventListener('input', updatePreview);
+    transparentToggle.addEventListener('change', updatePreview);
+
+    // Render inicial al cargar la página
+    window.addEventListener('load', () => {
+      editor.style.fontSize = editorFontSize.value + 'px';
+      output.style.fontSize = outputFontSize.value + 'px';
+      updatePreview();
+    });
+  </script>
+
+</body>
+</html>
